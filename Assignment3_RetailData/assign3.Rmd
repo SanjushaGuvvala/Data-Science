@@ -1,0 +1,826 @@
+---
+title: "Cx4073 : Assignment 3"
+author: "Guvvala Sanjusha_Haja Shareef Nihara_Bolisetty Sai Tejaswi"
+date: "U1522677D_U1521432J_U1522034J"
+output:
+  html_document:
+    theme: united
+    highlight: tango
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+
+### Finding Market Segments in Online Retail
+# ---------------------------------------------------------
+# Step 1 : Import the CSV data file `assign1_RetailData.csv` for analysis, and quickly check the structure of the data.
+# ---------------------------------------------------------
+
+
+```{r}
+retailData <- read.csv("assign3_RetailData.csv", header = TRUE)
+retailData[retailData=="unknown"] <- NA
+names(retailData) <- c("InvoiceNo","StockCode","Description","Quantity","InvoiceDate",
+                       "UnitPrice","CustomerID","Country" )
+str(retailData)
+
+```
+
+The following table summarizes the variables in the dataset. Note the type carefully, and convert if required.
+
+| Variable | Description | Remarks | 
+| -------- | ------------------- | ------------------------------------------ |
+| InvoiceNo | The serial number on the Invoice | Different for same product and same customer. |
+| StockCode | Product (item) code in the Store | Uniquely assigned to every distinct Product (item). |
+| Description | Product (item) name in the Store | Some observations of difference for the same StockCode. |
+| Quantity | Product Quantity in the Transaction | Changes with different transactions. |
+| InvoiceDate | Date-Time of the Transaction | Used to observe by splitting into Invoice Year, Month, Day of week. |
+| UnitPrice | Product Price per Unit (in Dollars) | Same for the same Product. |
+| CustomerID | Customer code in the Store | Same customer may make various purchases. |
+| Country | Country of Residence of Customer | Same for each individual Customer. |
+
+
+# ---------------------------------------------------------
+# Step 2 : Perform some basic explorations
+# ---------------------------------------------------------
+Dimension of the dataset
+```{r}
+dim(retailData)     
+```
+
+Labels of the columns/variables
+```{r}
+names(retailData)
+```
+
+Structure of the dataset
+```{r}
+str(retailData)
+```
+
+Observing first few rows of the data
+```{r}
+head(retailData)   
+```
+
+Summary statistics for all variables
+```{r}
+summary(retailData)
+```
+  
+
+# ---------------------------------------------------------
+# Step 3 : Data Preprocessing 
+# ---------------------------------------------------------
+
+Analyze the missing values in this dataset
+```{r}
+is.na(retailData)
+```
+
+sum and the percentage of missing values in dataset
+```{r}
+sum(is.na(retailData))
+mean(is.na(retailData))
+```
+
+omit records with missing values
+```{r}
+retailData <- na.omit(retailData)
+```
+
+Removing stock codes that are non-products
+```{r}
+retailData<-retailData[!(retailData$StockCode=="AMAZONFEE" | retailData$StockCode=="B" |
+                           retailData$StockCode=="BANKCHARGES" | retailData$StockCode=="C2" | 
+                           retailData$StockCode=="CRUK" | retailData$StockCode=="D" | 
+                           retailData$StockCode=="DOT" | retailData$StockCode=="M" |
+                           retailData$StockCode=="POST" | retailData$StockCode=="S"),]
+```
+
+Recheck dimension and summary of statistics
+```{r}
+dim(retailData)      # dimension of the dataset
+summary(retailData) # summary of the dataset
+```
+
+
+# ---------------------------------------------------------
+# Step 4 : Deeper exploration of data
+# ---------------------------------------------------------
+```{r}
+counts <- table(retailData$Quantity)
+cat("\nQuantity Distribution of retailData\n")
+counts
+b <- barplot(counts, main="Quantity Frequency Distribution", 
+             xlab="Quantity")
+```
+
+The graph shows that the most purchased quantity is 1 with a frequency of 72679. The majority of the distribution lies between quantities of 1 to 12. There are some quantities with a negative value and these are not valid in the interpretation as frequency should always be positive values.
+
+```{r}
+counts <- table(retailData$UnitPrice)
+cat("\nUnitPrice Distribution\n")
+counts
+b <- barplot(counts, main="UnitPrice Frequency Distribution", 
+             xlab="UnitPrice")
+```
+
+From the data, the highest frequency of Unitprice is 1.25.
+
+```{r}
+# install.packages("dplyr")
+library("dplyr")
+require(dplyr)
+commonUP <- retailData[retailData$UnitPrice == 1.25,]
+cat('\nTop 10 products for the common UnitPrice 1.25\n')
+top10 <- commonUP %>% group_by(Description) %>% summarise(Quantity = sum(Quantity)) %>% arrange(desc(Quantity))
+print(head(top10,10))
+```
+
+From the table observations, most frequent items bought in this Unit Price range are home decors. This can mean that people tend to prefer to purchase home decors with a cheaper price.
+
+```{r}
+counts <- table(retailData$Country)
+cat("\nCountry Distribution\n")
+counts
+b <- barplot(counts, main="Country Frequency Distribution", 
+             xlab="Country")
+```
+
+From observations the Country distribution is highly skewed towards the United Kingdom(UK). Most of the purchases were done in UK and as such this would not be an important factor to consider while analysing the clusters
+
+Introducing New variable : Invoice Year
+```{r}
+retailData$InvoiceYear <- format(as.Date(retailData$InvoiceDate, format="%d/%m/%Y %H:%M"),"%Y")
+retailData$InvoiceYear <- as.numeric(retailData$InvoiceYear)
+retailData$InvoiceYear[retailData$InvoiceYear < 2000 ] <- (retailData$InvoiceYear[retailData$InvoiceYear < 2000] + 2000) 
+
+counts <- table(retailData$InvoiceYear)
+cat("\nInvoiceYear Distribution\n")
+counts
+b <- barplot(counts, main="InvoiceYear Frequency Distribution", 
+             xlab="InvoiceYear")
+```
+
+As seen in the bar plot, majority of the Invoices in this data are from the year 2011
+
+Introducing New variable : Invoice Month
+```{r}
+retailData$InvoiceMonth <- format(as.Date(retailData$InvoiceDate, format="%d/%m/%Y %H:%M"),"%m")
+retailData$InvoiceMonth <- as.numeric(retailData$InvoiceMonth)
+
+counts <- table(retailData$InvoiceMonth)
+cat("\nInvoiceMonth Distribution\n")
+counts
+b <- barplot(counts, main="InvoiceMonth Frequency Distribution", 
+             xlab="InvoiceMonth")
+```
+
+As seen in the bar plot, the months nearer to the end of the year have a higher frequency due # to festive periods and the willingness to splurge.
+
+Introducing New variable : InvoiceDay which is Day of a week
+```{r}
+retailData$InvoiceDay <- weekdays(as.Date(retailData$InvoiceDate))
+
+counts <- table(retailData$InvoiceDay)
+cat("\nInvoiceDay Distribution\n")
+counts
+b <- barplot(counts, main="InvoiceDay Frequency Distribution", 
+             xlab="InvoiceDay")
+```
+
+As seen in the bar plot, InvoiceDay had a relatively uniform distribution.
+
+
+# Hypothesis:
+We predict that the greatest number of items sold will be largely party items. This is because as per our analysis most items were sold in towards the end of the year and school holidays will begin towards the end of year. Moreover, from our analysis most items were sold in United Kingdom. Towards the end of the year, commences Christmas in UK, their largest festival. Thus, we believe that the items sold in greatest numbers will be Christmas party items.
+
+# ---------------------------------------------------------
+# Step 5 : create matrix with values of Quantity
+# -------------------------------------------------------
+```{r}
+retailData$CustomerID <- as.factor(retailData$CustomerID)
+
+Quantity_matrix <- xtabs(Quantity ~ CustomerID + StockCode, data = retailData, addNA = TRUE, sparse = TRUE)
+```
+
+Removing unnecessary variables
+```{r}
+retailData <- subset(retailData, select = -c(InvoiceDate,Country) )
+head(retailData)
+```
+
+We removed InvoiceDate as we are using the 3 newly introduced variables of the date component and country is mostly involving UK.
+
+Adding numeric variables to apply clustering methods
+```{r}
+retailData$InvoiceNo_num <- as.numeric(retailData$InvoiceNo)
+retailData$StockCode_num <- as.numeric(retailData$StockCode)
+retailData$Description_num <- as.numeric(retailData$Description)
+retailData$Quantity_num <- as.numeric(retailData$Quantity)
+retailData$UnitPrice_num <- as.numeric(retailData$UnitPrice)
+retailData$CustomerID_num <- as.numeric(retailData$CustomerID)
+retailData$InvoiceYear_num <- as.numeric(retailData$InvoiceYear)
+retailData$InvoiceMonth_num <- as.numeric(retailData$InvoiceMonth)
+retailData$InvoiceDay_num <- as.numeric(as.factor(retailData$InvoiceDay))
+```
+
+Choose only numeric variables to input into clustering methods
+```{r}
+numericDF <- retailData[c(10:18)]
+head(numericDF)
+```
+
+# ---------------------------------------------------------
+# Step 6 : Identify clusters in their customer base & choosing the right distance of clustering
+# -------------------------------------------------------
+# 6.1 Hierarchical Clustering : 
+Using this clustering method to build the dendogram and analyse how many clusters or K is required. Using method ward to check for compact sperical clusters.
+```{r}
+#hiercFit <- hclust(dist(numericDF, method = "euclidean"), method="ward.D")
+#hiercFit
+```
+
+Hierarchical Clustering cannot accept such a huge vector input size as data size is huge, therefore hierarchical clustering is not efficient for this case.
+
+
+# 6.2 Perform K-Means Clustering with K determined
+
+Finding the optimal K value for clustering via K-Means.Running through different values of K, and visualize where the optimal value could lie. 
+```{r}
+kMin <- 1
+kMax <- 20
+withinSS <- double(kMax - kMin + 1)
+betweenSS <- double(kMax - kMin + 1)
+
+for (K in kMin:kMax) {
+  kMeansFit <- kmeans(numericDF, centers = K, nstart = 20)
+  withinSS[K] <- sum(kMeansFit$withinss)
+  betweenSS[K] <- kMeansFit$betweenss
+}
+```
+
+Visualizing the Between and Within Sum of Square to look for an elbow point, the optimal value of K
+```{r}
+plot(kMin:kMax, withinSS, pch=19, type="b", col="red",
+     xlab = "Value of K", ylab = "Sum of Squares (Within and Between)")
+
+plot(kMin:kMax, betweenSS, pch=19, type="b", col="green",
+     xlab = "Value of K", ylab = "Sum of Squares (Within and Between)")
+```
+
+The only elbow point that could be visualized from the two plots is at K = 4.
+Optimal K = 4 using the elbow point method
+
+
+# 6.3 Perform EM Clustering on the dataset
+```{r}
+# install.packages("mclust")
+#library(mclust)
+#emFit <- Mclust(numericDF)
+#cat("\nSummary of EM clustering method\n")
+#summary(emFit)
+```
+
+EM Clustering outputs in only one cluster. 
+This is due to the shape of the dataset not following the gaussian distribution. Hence the clustering algorithm consists the whole dataset into one gaussian structure. However, the dataset form is not the same.
+
+
+# -------------------------------------------------------
+# Clustering with observed optimal K = 4
+# -------------------------------------------------------
+# Calculating Quantity distribution to understand importance
+
+kMeansFit using optimal k value =4
+```{r}
+K <- 4
+kMeansFit <- kmeans(numericDF, centers = K, nstart = 20)
+cat("Structure of kMeans clustering method for K = ",K)
+str(kMeansFit)
+```
+
+output of kMeans clustering
+```{r}
+out <- cbind(numericDF, clusterNum=kMeansFit$cluster)
+
+
+# Merging back numeric variables into original factor variables to further observe patterns
+clustDF <- merge(retailData, out, by = c("InvoiceNo_num","StockCode_num","Description_num","Quantity_num","UnitPrice_num",
+                                         "CustomerID_num","InvoiceYear_num","InvoiceMonth_num","InvoiceDay_num"), all.x = TRUE)
+cat("\nRetail data sample observation\n")
+#write.csv(clustDF,file="assign3_clusterDataK4.csv",append=FALSE,row.names=FALSE,sep=",")
+clustDF <- read.csv("assign3_clusterDataK4.csv", header = TRUE)
+head(clustDF)
+```
+
+
+# -------------------------------------------------------
+# Step 7: Market Segmentation
+# -------------------------------------------------------
+Analysing each cluster 
+Drawing of bar plots to visualise the distribution of variables in each cluster
+
+Analyses the Quantity, UnitPrice variables in every cluster by obtaining the mean value from every cluster
+
+Table and bar plots are plotted to see the distribution of Quantity, UnitPrice, InvoiceYear, InvoiceMonth, InvoiceDay variables 
+
+Also, the top10 products bought by customers in every cluster is displayed and analysed below
+```{r}
+cat("\nComparing Quantity mean for different clusters\n")
+z = tapply(clustDF$Quantity, clustDF$cluster, mean)
+print(z)
+```
+
+Clusters 1,2,3 have similar means for Quantity while
+Cluster 4's mean varies from the rest.
+```{r}
+cat("\nComparing UnitPrice mean for different clusters\n")
+z = tapply(clustDF$UnitPrice, clustDF$cluster, mean)
+print(z)
+```
+
+All Clusters have similar means for UnitPrice.
+
+Analysing distributions in every cluster
+```{r}
+cat("\nQuantity distribution comparison per cluster\n")
+par(mfrow=c(2,2))
+clustlabel<- 1
+while(clustlabel<5){
+  clust <- clustDF[clustDF$clusterNum == clustlabel,]
+  
+  counts <- table(clust$Quantity)
+  
+  b <- barplot(counts, main="Quantity Frequency Distribution", 
+               xlab="Quantity")
+  clustlabel<-clustlabel+1
+}
+par(mfrow=c(1,1))
+```
+
+In terms of quantity distribution, Clusters 1,2,3 have similar quantity distributions ranging from 1-10. 
+Whereas, Cluster 4 has quantity distribution in the negative range and this is not valid. The positive range is slightly higher than the other 3 clusters.
+```{r}
+cat("\nUnitPrice distribution comparison per cluster\n")
+par(mfrow=c(2,2))
+clustlabel<- 1
+while(clustlabel<5){
+  
+  clust <- clustDF[clustDF$clusterNum ==clustlabel,]
+  
+  counts <- table(clust$UnitPrice)
+  
+  b <- barplot(counts, main="UnitPrice Frequency Distribution", 
+               xlab="UnitPrice")
+  
+  clustlabel<-clustlabel+1
+  
+}
+par(mfrow=c(1,1))
+```
+
+The UnitPrice is evenly distributed in all the 4 clusters as supported by the summary statistics # earlier. The common UnitPrice among the clusters seems to be 1.25
+```{r}
+cat("\nInvoiceYear distribution comparison per cluster\n")
+par(mfrow=c(2,2))
+clustlabel<- 1
+while(clustlabel<5){
+  
+  clust <- clustDF[clustDF$clusterNum ==clustlabel,]
+  
+  counts <- table(clust$InvoiceYear)
+  
+  b <- barplot(counts, main="InvoiceYear Frequency Distribution", 
+               xlab="InvoiceYear")
+  
+  clustlabel<-clustlabel+1
+  
+}
+par(mfrow=c(1,1))
+```
+
+Clusters 1 and 3 contain data from 2011 only, whereas Clusters 2 and 4 have a mixture of data from 2010 and 2011 too. Cluster 2 has a greater number of invoices from 2010 in comparison to Cluster 4.
+```{r}
+cat("\nInvoiceMonth distribution comparison per cluster\n")
+par(mfrow=c(2,2))
+clustlabel<- 1
+while(clustlabel<5){
+  
+  clust <- clustDF[clustDF$clusterNum ==clustlabel,]
+  
+  counts <- table(clust$InvoiceMonth)
+  
+  b <- barplot(counts, main="InvoiceMonth Frequency Distribution", 
+               xlab="InvoiceMonth")
+  
+  clustlabel<-clustlabel+1
+  
+}
+par(mfrow=c(1,1))
+```
+
+The distribution here is pretty interesting as there is no common pattern here and the individual clusters can be seen. Cluster 2 shows high frequency in December, January, February and March. However it does # have some overlaps with Cluster 1 for the month of April for some points. Cluster 1 shows high frequency in April, May, June, July. 
+Cluster 3 shows high frequency in August, September, October. However it does have overlaps with Cluster 1 for the month of July for some points. Cluster 4 shows highest frequency in November. However it does have overlaps with Cluster 3 and 2 for the month of October and December respectively.The overlaps could be the points that lie in between the clusters and other factors need to be taken in consideration as well.
+
+```{r}
+cat("\nInvoiceDay distribution comparison per cluster\n")
+par(mfrow=c(2,2))
+clustlabel<- 1
+while(clustlabel<5){
+  
+  clust <- clustDF[clustDF$clusterNum ==clustlabel,]
+  
+  counts <- table(clust$InvoiceDay)
+  
+  b <- barplot(counts, main="InvoiceDay Frequency Distribution", 
+               xlab="InvoiceDay")
+  
+  clustlabel<-clustlabel+1
+  
+}
+par(mfrow=c(1,1))
+```
+
+The frequency of purchases is somewhat uniquely distributed in all the clusters.
+
+There are different days with the highest frequency in each of the clusters.
+
+Cluster 1: Wednesday
+
+Cluster 2: Monday
+
+Cluster 3: Friday
+
+Cluster 4: Saturday
+
+This explains that this is an important factor in the market segmentation of the clusters. With more information known about the demographics of the clusters, more can be inferred and the # marketing strategies can be catered accordingly.
+For example, Cluster 3 and Cluster 4 would enjoy weekend sales whereas Cluster 1 and 2 
+would enjoy weekday sales.
+
+
+All in all, the month and the day help to easily identify which
+cluster the data point is likely to be clustered.
+They have proven to be strong variables to separate clusters.
+
+Top 10 products in every cluster
+```{r}
+# install.packages("dplyr")
+library("dplyr")
+require(dplyr)
+
+clustlabel<- 1
+while (clustlabel<5){
+  clust <- clustDF[clustDF$clusterNum ==clustlabel,]
+  cat('\nTop 10 products bought by the customers by quantity in cluster',clustlabel,'\n')
+  top10 <- clust %>% group_by(Description) %>% summarise(Quantity = sum(Quantity)) %>% arrange(desc(Quantity))
+  print(head(top10,10))
+  clustlabel <- clustlabel +1
+} 
+```
+
+Items that have been purchased the most in every cluster:
+
+Cluster1: WORLD WAR 2 GLIDERS ASSTD DESIGNS          	Quantity = 16944
+
+Cluster2: MEDIUM CERAMIC TOP STORAGE JAR             	Quantity = 74215
+
+Cluster3: JUMBO BAG RED RETROSPOT                   	Quantity = 15062
+
+Cluster4: RABBIT NIGHT LIGHT                     	   	Quantity = 21970 
+
+
+We notice that WORLD WAR 2 GLIDERS ASSTD DESIGNS  appears 1st in Cluster1,		 # 2nd in Cluster2, 4th in Cluster3, 4th in Cluster4. 
+WORLD WAR 2 GLIDERS ASSTD DESIGNS  appears within Top5 in all Clusters.
+We also notice that JUMBO BAG RED RETROSPOT appears 4th in Cluster1,3rd in Cluster2, 1st in  Cluster3, 9th in Cluster4.
+JUMBO BAG RED RETROSPOT appears within Top10 in all Clusters.
+Hence,we conclude that WORLD WAR 2 GLIDERS ASSTD DESIGNS and JUMBO BAG RED RETROSPOT are the most well-liked products overall.
+Thus, one marketing strategy would be to replenish these stocks frequently and ensure they  
+are always available. 
+
+Introducing new variable Sales = Quantity * UnitPrice
+```{r}
+clustDF$Sales <- clustDF$Quantity * clustDF$UnitPrice
+head(clustDF)
+
+clustlabel<- 1
+while (clustlabel<5){
+  clust <- clustDF[clustDF$clusterNum ==clustlabel,]
+  cat('\nTop 10 products bought by the customers by Sales in cluster',clustlabel,'\n')
+  top10 <- clust %>% group_by(Description) %>% summarise(Sales = sum(Sales)) %>% arrange(desc(Sales))
+  print(head(top10,10))
+  
+  clustlabel <- clustlabel +1
+} 
+```
+
+Items that garnered highest sales:
+
+Cluster1: PICNIC BASKET WICKER 60 PIECES   	Sales= 39620
+
+Cluster 2: MEDIUM CERAMIC TOP STORAGE JAR	  Sales=77184
+
+Cluster3: REGENCY CAKESTAND 3 TIER          Sales=31098
+
+Cluster4: RABBIT NIGHT LIGHT               	Sales= 41455
+
+
+REGENCY CAKESTAND 3 TIER is 2nd in Cluster1, 2nd in Cluster2, 1st in Cluster3.
+It appears within Top3 in 3 Clusters. 
+Hence, it can be concluded that it is one of the important items that bring about the highest sales for the store.
+
+JUMBO BAG RED RETROSPOT, ASSORTED COLOUR BIRD ORNAMENT and WHITE HANGING HEART T-LIGHT HOLDER appears in Top10 for all the clusters.
+
+Therefore, in addition to the top product, it can be deduced that  REGENCY CAKESTAND 3 TIER , JUMBO BAG RED RETROSPOT and ASSORTED COLOUR BIRD ORNAMENT are important products that garner high sales too. 
+
+
+For Cluster2: MEDIUM CERAMIC TOP STORAGE JAR, the top product for Quantity remains as top Product for sales too.
+For Cluster 4: RABBIT NIGHT LIGHT, the top product for Quantity remains as top Product for sales too.
+
+One marketing Strategy would be to have products that are similar function as of those that garner highest sales. So that in case these products are not available, there will be substitute products to replace them. 
+
+Another marketing strategy would be to create different designs of the highest selling products so that there will be more varieties for the customers to choose and this might increase the customer's satisfaction level and thus increase the sales of these products even further. 
+
+
+
+
+
+
+# -------------------------------------------------------
+# Performing clustering for K=3 to observe differences between the clusters for K=4
+# -------------------------------------------------------
+# Calculating Quantity distribution to understand importance
+
+kMeansFit using K = 3
+```{r}
+K <- 3
+kMeansFit <- kmeans(numericDF, centers = K, nstart = 20)
+cat("Structure of kMeans clustering method for K = ",K)
+str(kMeansFit)
+
+#output of kMeans clustering
+out <- cbind(numericDF, clusterNum=kMeansFit$cluster)
+
+
+# Merging back numeric variables into original factor variables to further observe patterns
+clustDF <- merge(retailData, out, by = c("InvoiceNo_num","StockCode_num","Description_num","Quantity_num","UnitPrice_num",
+                                         "CustomerID_num","InvoiceYear_num","InvoiceMonth_num","InvoiceDay_num"), all.x = TRUE)
+cat("\nRetail data sample observation\n")
+#write.csv(clustDF,file="assign3_clusterDataK3.csv",append=FALSE,row.names=FALSE,sep=",")
+clustDF <- read.csv("assign3_clusterDataK3.csv", header = TRUE)
+head(clustDF)
+```
+
+
+
+# -------------------------------------------------------
+# Step 7: Market Segmentation
+# -------------------------------------------------------
+Analysing each cluster 
+Drawing of bar plots to visualise the distribution of variables in each cluster
+
+Analyses the Quantity, UnitPrice variables in every cluster by obtaining the mean value from every cluster
+
+Table and bar plots are plotted to see the distribution of Quantity, UnitPrice, InvoiceYear, InvoiceMonth, InvoiceDay variables 
+
+Also, the top10 products bought by customers in every cluster is displayed and analysed below
+```{r}
+cat("\nComparing Quantity mean for different clusters\n")
+z = tapply(clustDF$Quantity, clustDF$cluster, mean)
+print(z)
+```
+
+Clusters 2,3 have similar means for Quantity while 
+Cluster 1's mean varies from the rest.
+```{r}
+cat("\nComparing UnitPrice mean for different clusters\n")
+z = tapply(clustDF$UnitPrice, clustDF$cluster, mean)
+print(z)
+```
+
+Clusters 1 and 3 have similar mean for UnitPrice but Cluster 2 has a slightly higher mean.
+
+Analysing distributions in every cluster
+```{r}
+cat("\nQuantity distribution comparison per cluster\n")
+par(mfrow=c(2,2))
+clustlabel<- 1
+while(clustlabel<K+1){
+  clust <- clustDF[clustDF$clusterNum == clustlabel,]
+  
+  counts <- table(clust$Quantity)
+  
+  b <- barplot(counts, main="Quantity Frequency Distribution", 
+               xlab="Quantity")
+  clustlabel<-clustlabel+1
+}
+par(mfrow=c(1,1))
+```
+
+In terms of quantity distribution, Clusters 2 and 3 have similar quantity distributions ranging from 1-15. 
+Whereas, Cluster 1 has quantity distribution in the negative range and this is not valid. The positive range is slightly higher than the other 2 clusters. 
+```{r}
+cat("\nUnitPrice distribution comparison per cluster\n")
+par(mfrow=c(2,2))
+clustlabel<- 1
+while(clustlabel<K+1){
+  
+  clust <- clustDF[clustDF$clusterNum ==clustlabel,]
+  
+  counts <- table(clust$UnitPrice)
+  
+  b <- barplot(counts, main="UnitPrice Frequency Distribution", 
+               xlab="UnitPrice")
+  
+  clustlabel<-clustlabel+1
+  
+}
+par(mfrow=c(1,1))
+```
+
+The UnitPrice is evenly distributed in all the 3 clusters as supported by the summary statistics # earlier. The common UnitPrice among the clusters still seems to be 1.25.
+```{r}
+cat("\nInvoiceYear distribution comparison per cluster\n")
+par(mfrow=c(2,2))
+clustlabel<- 1
+while(clustlabel<K+1){
+  
+  clust <- clustDF[clustDF$clusterNum ==clustlabel,]
+  
+  counts <- table(clust$InvoiceYear)
+  
+  b <- barplot(counts, main="InvoiceYear Frequency Distribution", 
+               xlab="InvoiceYear")
+  
+  clustlabel<-clustlabel+1
+  
+}
+par(mfrow=c(1,1))
+```
+
+Cluster 3 contains data from 2011 only, whereas Clusters 1 and 2 have a mixture of data from 2010 and 2011 too. Cluster 2 has a greater number of invoices from 2010 in comparison to Cluster 1.
+```{r}
+cat("\nInvoiceMonth distribution comparison per cluster\n")
+par(mfrow=c(2,2))
+clustlabel<- 1
+while(clustlabel<K+1){
+  
+  clust <- clustDF[clustDF$clusterNum ==clustlabel,]
+  
+  counts <- table(clust$InvoiceMonth)
+  
+  b <- barplot(counts, main="InvoiceMonth Frequency Distribution", 
+               xlab="InvoiceMonth")
+  
+  clustlabel<-clustlabel+1
+  
+}
+par(mfrow=c(1,1))
+```
+
+The distribution here is pretty interesting as there is no common pattern here and the individual clusters can be seen.
+
+Cluster 1 shows high frequency in October and November. However it does have some overlaps with Cluster 2 for the month of December and Cluster 3 for the month of September for some points. The higher number of  purchases in the last few months of the year can be accounted for the fact that the festive period such as Christmas is around the corner in the UK.
+
+Cluster 2 shows high frequency in March and December. It does contain some points in the earlier months of the year from January to May.
+
+Cluster 3 shows high frequency in the months from June to September.  It does contain some points in the months of May too. 
+
+However it does have overlaps with Cluster 1 for the month of September and Cluster 2 for the month of May for some points.
+
+The overlaps could be the points that lie in between the clusters and other factors need to be taken in consideration as well.
+  
+```{r}
+cat("\nInvoiceDay distribution comparison per cluster\n")
+par(mfrow=c(2,2))
+clustlabel<- 1
+while(clustlabel<K+1){
+  
+  clust <- clustDF[clustDF$clusterNum ==clustlabel,]
+  
+  counts <- table(clust$InvoiceDay)
+  
+  b <- barplot(counts, main="InvoiceDay Frequency Distribution", 
+               xlab="InvoiceDay")
+  
+  clustlabel<-clustlabel+1
+  
+}
+par(mfrow=c(1,1))
+```
+
+The frequency of purchases is somewhat uniquely distributed in all the clusters.
+
+There are different days with the highest frequency in each of the clusters.
+
+Cluster 1: Saturday
+
+Cluster 2: Sunday
+
+Cluster 3: Sunday
+
+This explains that this is an important factor in the market segmentation of the clusters. With more information known about the demographics of the clusters, more can be inferred and the marketing strategies can be catered accordingly.
+
+For example, weekend sales will prove to be beneficial and can result in more purchases. 
+Another marketing strategy is to ensure the stocks are replenished before the weekend starts.
+  
+  
+All in all, the month and the day help to easily identify which cluster the data point is likely to be clustered into.
+
+They have proven to be strong variables to separate clusters.
+
+Top 10 products in every cluster
+```{r}
+# install.packages("dplyr")
+library("dplyr")
+require(dplyr)
+
+clustlabel<- 1
+while (clustlabel<K+1){
+clust <- clustDF[clustDF$clusterNum ==clustlabel,]
+cat('\nTop 10 products bought by the customers by quantity in cluster',clustlabel,'\n')
+top10 <- clust %>% group_by(Description) %>% summarise(Quantity = sum(Quantity)) %>% arrange(desc(Quantity))
+print(head(top10,10))
+clustlabel <- clustlabel +1
+} 
+```
+
+Items that have been purchased the most in every cluster:
+
+Cluster1: RABBIT NIGHT LIGHT                  Quantity = 22353
+
+Cluster2: MEDIUM CERAMIC TOP STORAGE JAR      Quantity = 74215
+
+Cluster3: JUMBO BAG RED RETROSPOT             Quantity = 18192
+
+We also notice that WORLD WAR 2 GLIDERS ASSTD DESIGNS  appears 3rd in Cluster1, 2nd in Cluster2, 3rd in Cluster3. 
+
+World War2 Glider Asstd Designs appears within Top5 in all Clusters.
+We also notice that JUMBO BAG RED RETROSPOT appears 5th in Cluster1, 5th in Cluster2, 1st in  Cluster3.
+
+Jumbo Bag Red Retrospot appears within Top5 in all Clusters.
+Also, ASSORTED COLOUR BIRD ORNAMENT appears 7th in Cluster1,6th in Cluster2, 7th in Cluster3.
+
+Hence,we conclude that WORLD WAR 2 GLIDERS ASSTD DESIGNS,JUMBO BAG RED RETROSPOT and ASSORTED COLOUR BIRD ORNAMENT are 
+the most well-liked products overall since it appears in all 3 clusters.
+
+When comparing these 3 clusters with 4 clusters for Quantity, the top product for the 3 clusters is the same as the top product for 3 out of 4 clusters in K=4.
+
+One marketing strategy would be to replenish these stocks of WORLD WAR 2 GLIDERS ASSTD DESIGNS,JUMBO BAG RED RETROSPOT and ASSORTED COLOUR BIRD ORNAMENT frequently and ensure they are always available. 
+
+
+Introducing new variable Sales = Quantity * UnitPrice
+```{r}
+clustDF$Sales <- clustDF$Quantity * clustDF$UnitPrice
+head(clustDF)
+
+clustlabel<- 1
+while (clustlabel<K+1){
+clust <- clustDF[clustDF$clusterNum ==clustlabel,]
+cat('\nTop 10 products bought by the customers by Sales in cluster',clustlabel,'\n')
+top10 <- clust %>% group_by(Description) %>% summarise(Sales = sum(Sales)) %>% arrange(desc(Sales))
+print(head(top10,10))
+
+clustlabel <- clustlabel +1
+} 
+```
+
+Items that garnered highest sales:
+
+Cluster1:RABBIT NIGHT LIGHT                 Sales= 42195
+
+Cluster2:MEDIUM CERAMIC TOP STORAGE JAR   	Sales=77184
+
+Cluster3:REGENCY CAKESTAND 3 TIER           Sales= 45477
+
+REGENCY CAKESTAND 3 TIER is 5th in Cluster1, 2nd in Cluster2, 1st in Cluster3.
+It appears within Top5 in 3 Clusters. 
+
+Hence, it can be concluded that it is one of the important items that bring about the highest sales for the store.
+
+JUMBO BAG RED RETROSPOT and ASSORTED COLOUR BIRD ORNAMENT appears in Top10 for all the clusters.
+
+Therefore, we conclude that REGENCY CAKESTAND 3 TIER,JUMBO BAG RED RETROSPOT, ASSORTED COLOUR BIRD ORNAMENT are products that garner the highest sales for the store overall.
+
+Except for Cluster3, the top products for Quantity remains the top product for sales as well.
+
+One marketing Strategy would be to have products that are similar in function as of those that garner highest sales. So that in case these products are not available, there will be substitute products to replace them.
+
+
+In conclusion, there are some products that have topped the frequency list for both k=3 and k=4. These products are JUMBO BAG RED RETROSPOT and WORLD WAR 2 GLIDERS ASSTD DESIGNS in terms of quantity.
+
+In terms of sales, the same products have topped for both k=3 and k=4 except for WHITE HANGING HEART T-LIGHT HOLDERS.
+
+
+Overall, after looking at the different clusters using 2 different k -values, we have decided that  k=3 addresses the hypothesis better because segmenting the data into another cluster was unnecessary in our case. 
+
+This can be seen from Clusters 2 and 3 from k=4 that are very similar to each other. The similarity is being shown by common products such as JUMBO BAG RED RETROSPORT, MINI PAINT SET VINTAGE, WORLD WAR 2 GLIDERS ASST DESIGNS, PACK OF 72 and RETROSPORT CAKE CASES.
+
+
+
+
+
